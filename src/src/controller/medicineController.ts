@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import path from "path"
+import fs from "fs"
 import { idText } from "typescript";
+import { ROOT_DIRECTORY } from "../config";
 const prisma = new PrismaClient({ errorFormat: "minimal" })
 type DrugType = "Syrup" | "Tablet" | "Powder"
 
@@ -12,11 +15,12 @@ const createMedicine = async (req: Request, res: Response) => {
         const exp_date: Date = new Date(req.body.exp_date)
         const price: number = Number(req.body.price)
         const type: DrugType = req.body.type
+        const photo: string = req.file?.filename || ``
 
         /** save a neW medicine to DB */
         const newMedicine = await prisma.medicine.create({
             data: {
-                name, stock, exp_date, price, type
+                name, stock, exp_date, price, type, photo
             }
         })
         return res.status(200).json({
@@ -24,6 +28,8 @@ const createMedicine = async (req: Request, res: Response) => {
             data: newMedicine
         })
     } catch (error) {
+        console.log(error);
+
         return res.status(500).json(error)
     }
 }
@@ -35,7 +41,7 @@ const readMedicine = async (req: Request, res: Response) => {
             where: {
                 OR: [
                     { name: { contains: search?.toString() || "" } }
-                   
+
 
                 ]
             }
@@ -63,6 +69,22 @@ const updateMedicine = async (req: Request, res: Response) => {
             })
         }
 
+        /** check change file or not  */
+        if (req.file) {
+            /** assume that user want to replace photo */
+            /** define the old of file name */
+            let oldFileName = findMedicine.photo
+            /** define path / location of old file */
+            let pathfile = `${ROOT_DIRECTORY}/public/medicine-photo/${oldFileName}`
+            /** check is file exist */
+            let existsFile = fs.existsSync(pathfile)
+
+            if(existsFile && oldFileName !== ``){
+                fs.unlinkSync(pathfile)
+            }
+        }
+
+
         /** read a property of medicine from req.body */
         const { name, stock, price, type, exp_date } = req.body
 
@@ -74,7 +96,8 @@ const updateMedicine = async (req: Request, res: Response) => {
                 stock: stock ? Number(stock) : findMedicine.stock,
                 price: price ? Number(price) : findMedicine.price,
                 exp_date: exp_date ? new Date(exp_date) : findMedicine.exp_date,
-                type: type ? type : findMedicine.type
+                type: type ? type : findMedicine.type,
+                photo: req.file? req.file.filename : findMedicine.photo
             }
         })
         return res.status(200).json({
@@ -98,6 +121,16 @@ const deleteMedicine = async (req: Request, res: Response) => {
                 message: `Medicine not found`
             })
         }
+
+        /** delete the file  */
+        let oldFileName = findMedicine.photo
+        let pathFile = `${ROOT_DIRECTORY}/public/medicine-photo/${oldFileName}`
+        let existsFile = fs.existsSync(pathFile)
+
+        if (existsFile && oldFileName !== ``){
+            fs.unlinkSync(pathFile)
+        }
+
         const saveMedicine = await prisma.medicine.delete({
             where: { id: Number(id) }
         })
